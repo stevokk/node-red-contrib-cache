@@ -110,7 +110,6 @@ export default function (RED) {
       const getLike = (msg, likeKey) => {
         let result = [];
         const allKeys = this.cacheNode.cache.keys();
-        this.warn(allKeys);
         if (likeKey && allKeys) {
           allKeys.forEach((key) => {
             if (key.startsWith(likeKey)) {
@@ -130,7 +129,6 @@ export default function (RED) {
       };
 
       this.on("input", (msg) => {
-        this.warn(msg);
         if (this.cacheNode) {
           let key = RED.util.getMessageProperty(msg, this.keyProperty);
           if (msg.option) {
@@ -187,7 +185,6 @@ export default function (RED) {
       }
       this.name = n.name;
       this.on("input", (msg) => {
-        console.info(msg.topic);
         if (this.cacheNode) {
           let key = RED.util.getMessageProperty(msg, this.keyProperty);
           if (key) {
