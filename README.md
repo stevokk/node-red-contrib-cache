@@ -2,6 +2,8 @@ Memory cache Node-RED nodes
 ===
 Fork from: https://github.com/CANDY-LINE/node-red-contrib-cache
 
+Don't use! I am hacking this to get a working prototype, all liability is yours
+
 [![GitHub release](https://img.shields.io/github/release/CANDY-LINE/node-red-contrib-cache.svg)](https://github.com/CANDY-LINE/node-red-contrib-cache/releases/latest)
 [![master Build Status](https://travis-ci.org/CANDY-LINE/node-red-contrib-cache.svg?branch=master)](https://travis-ci.org/CANDY-LINE/node-red-contrib-cache/)
 [![License MIT](https://img.shields.io/github/license/CANDY-LINE/node-red-contrib-cache.svg)](http://opensource.org/licenses/MIT)
