@@ -1,6 +1,6 @@
 const NodeCache = require("node-cache");
 
-export default function (RED) {
+module.exports = function(RED) {
   class CacheNode {
     constructor(n) {
       RED.nodes.createNode(this, n);
