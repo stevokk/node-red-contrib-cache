@@ -1,207 +1,197 @@
 const NodeCache = require("node-cache");
 
 module.exports = function(RED) {
-  class CacheNode {
-    constructor(n) {
-      RED.nodes.createNode(this, n);
-      this.name = n.name;
-      this.cache = new NodeCache({
-        stdTTL: n.defaultTtl || 0,
-        checkperiod: n.checkPeriod || 0,
+
+  function cacheNode(n) {
+    var node = this;
+    RED.nodes.createNode(node, n);
+    node.name = n.name;
+    node.cache = new NodeCache({
+      stdTTL: n.defaultTtl || 0,
+      checkperiod: n.checkPeriod || 0,
+    });
+    node.cache.nodeList = [];
+    node.cache.addNode = function(newNode) {
+      this.nodeList.push(newNode);
+    };
+    node.cache.onChanged = function() {
+      this.nodeList.forEach((n) => {
+        n.emit("updated");
       });
-      this.cache.nodeList = [];
-      function addNode(node) {
-        this.nodeList.push(node);
-      }
-      this.cache.addNode = addNode.bind(this.cache);
-      function onChanged() {
-        this.nodeList.forEach((n) => {
-          n.emit("updated");
+    };
+    ["set", "del", "expired", "flush"].forEach((e) => {
+      node.cache.on(e, node.cache.onChanged);
+    });
+    node.on("close", function() {
+      node.cache.close();
+      delete node.cache;
+    });
+  }
+
+  RED.nodes.registerType("Cache", cacheNode);
+
+  function cacheInNode(n) {
+    var node = this;
+    RED.nodes.createNode(node, n);
+    node.keyProperty = n.keyProperty || "topic";
+    node.valueProperty = n.valueProperty || "payload";
+    node.useString = n.useString;
+    node.cacheMissRouting = n.outputs > 1;
+    node.cacheNodeId = n.cache;
+    node.cacheNode = RED.nodes.getNode(node.cacheNodeId);
+    if (node.cacheNode) {
+      node.cacheNode.cache.addNode(node);
+      node.on("updated", function() {
+        node.status({
+          fill: "green",
+          shape: "dot",
+          text: RED._("cache.status.keys", {
+            n: node.cacheNode.cache.getStats().keys,
+          }),
         });
-      }
-      this.cache.onChanged = onChanged.bind(this.cache);
-      ["set", "del", "expired", "flush"].forEach((e) => {
-        this.cache.on(e, this.cache.onChanged);
-      });
-      this.on("close", () => {
-        this.cache.close();
-        delete this.cache;
       });
     }
-  }
-  RED.nodes.registerType("Cache", CacheNode);
-
-  class CacheInNode {
-    constructor(n) {
-      RED.nodes.createNode(this, n);
-      this.keyProperty = n.keyProperty || "topic";
-      this.valueProperty = n.valueProperty || "payload";
-      this.useString = n.useString;
-      this.cacheMissRouting = n.outputs > 1;
-      this.cacheNodeId = n.cache;
-      this.cacheNode = RED.nodes.getNode(this.cacheNodeId);
-      if (this.cacheNode) {
-        this.cacheNode.cache.addNode(this);
-        this.on("updated", () => {
-          this.status({
-            fill: "green",
-            shape: "dot",
-            text: RED._("cache.status.keys", {
-              n: this.cacheNode.cache.getStats().keys,
-            }),
-          });
-        });
+    node.name = n.name;
+    let sendMessage = function(msg, cacheMiss) {
+      if (node.cacheMissRouting) {
+        let ports = [];
+        ports[cacheMiss ? 1 : 0] = msg;
+        node.send(ports);
+      } else {
+        node.send(msg);
       }
-      this.name = n.name;
-      let sendMessage = (msg, cacheMiss) => {
-        if (this.cacheMissRouting) {
-          let ports = [];
-          ports[cacheMiss ? 1 : 0] = msg;
-          this.send(ports);
-        } else {
-          this.send(msg);
-        }
-      };
-
-      let del = (msg, key) => {
-        let count = this.cacheNode.cache.del(key);
-        msg.payload = count;
-        sendMessage(msg);
-      };
-
-      let dump = (msg, likeKey) => {
-        // TODO: make sync
-        this.cacheNode.cache.keys((err, keys) => {
-          if (!err) {
-            let filterKeys = [];
-            if (likeKey) {
-              keys.forEach((k) => {
-                if (k.startsWith(likeKey)) {
-                  filterKeys.push(k);
-                }
-              });
-            }
-            this.cacheNode.cache.mget(filterKeys, (err, value) => {
-              RED.util.setMessageProperty(msg, this.valueProperty, value);
-              sendMessage(msg);
+    };
+    let del = function(msg, key) {
+      let count = node.cacheNode.cache.del(key);
+      msg.payload = count;
+      sendMessage(msg);
+    };
+    let dump = function(msg, likeKey) {
+      node.cacheNode.cache.keys((err, keys) => {
+        if (!err) {
+          let filterKeys = [];
+          if (likeKey) {
+            keys.forEach((k) => {
+              if (k.startsWith(likeKey)) {
+                filterKeys.push(k);
+              }
             });
           }
-        });
-      };
-
-      let keys = (msg, likeKey) => {
-        let result = [];
-        const allKeys = this.cacheNode.cache.keys();
-
-        if (likeKey && allKeys) {
-          allKeys.forEach((key) => {
-            if (key.startsWith(likeKey)) {
-              result.push(key);
-            }
+          node.cacheNode.cache.mget(filterKeys, (err, value) => {
+            RED.util.setMessageProperty(msg, node.valueProperty, value);
+            sendMessage(msg);
           });
-        } else {
-          result = allKeys;
         }
-
-        RED.util.setMessageProperty(msg, this.valueProperty, result);
-        sendMessage(msg);
-      };
-
-      const getLike = (msg, likeKey) => {
-        let result = [];
-        const allKeys = this.cacheNode.cache.keys();
-        if (likeKey && allKeys) {
-          allKeys.forEach((key) => {
-            if (key.startsWith(likeKey)) {
-              const value = this.cacheNode.cache.get(key);
-              // maybe expired since keys() call
-              let cacheMiss = value === undefined;
-              result.push(value === "" || cacheMiss ? null : value);
-            }
-          });
-        } else {
-          result = allKeys;
-        }
-
-        RED.util.setMessageProperty(msg, this.valueProperty, result);
-        // 0 length triggers cache miss
-        sendMessage(msg, result.length === 0);
-      };
-
-      this.on("input", (msg) => {
-        if (this.cacheNode) {
-          let key = RED.util.getMessageProperty(msg, this.keyProperty);
-          if (msg.option) {
-            if (msg.option === "delete") {
-              del(msg, key);
-            } else if (msg.option === "dump") {
-              dump(msg, key);
-            } else if (msg.option === "keys") {
-              keys(msg, key);
-            } else if (msg.option === "getLike") {
-              getLike(msg, key);
-            }
-          } else {
-            if (key) {
-              const value = this.cacheNode.cache.get(key);
-              let cacheMiss = value === undefined;
-              RED.util.setMessageProperty(
-                msg,
-                this.valueProperty,
-                value === "" || cacheMiss ? null : value
-              );
-              sendMessage(msg, cacheMiss);
-            }
+      });
+    };
+    let keys = function(msg, likeKey) {
+      let result = [];
+      const allKeys = node.cacheNode.cache.keys();
+      if (likeKey && allKeys) {
+        allKeys.forEach((key) => {
+          if (key.startsWith(likeKey)) {
+            result.push(key);
           }
-        }
-      });
-      process.nextTick(() => {
-        this.emit("updated");
-      });
-    }
-  }
-  RED.nodes.registerType("Cache in", CacheInNode);
-
-  class CacheOutNode {
-    constructor(n) {
-      RED.nodes.createNode(this, n);
-      this.keyProperty = n.keyProperty || "topic";
-      this.valueProperty = n.valueProperty || "payload";
-      this.ttlProperty = n.ttlProperty || "";
-      this.useString = n.useString;
-      this.cacheNodeId = n.cache;
-      this.cacheNode = RED.nodes.getNode(this.cacheNodeId);
-      if (this.cacheNode) {
-        this.cacheNode.cache.addNode(this);
-        this.on("updated", () => {
-          this.status({
-            fill: "green",
-            shape: "dot",
-            text: RED._("cache.status.keys", {
-              n: this.cacheNode.cache.getStats().keys,
-            }),
-          });
         });
+      } else {
+        result = allKeys;
       }
-      this.name = n.name;
-      this.on("input", (msg) => {
-        if (this.cacheNode) {
-          let key = RED.util.getMessageProperty(msg, this.keyProperty);
+      RED.util.setMessageProperty(msg, node.valueProperty, result);
+      sendMessage(msg);
+    };
+    const getLike = function(msg, likeKey) {
+      let result = [];
+      const allKeys = node.cacheNode.cache.keys();
+      if (likeKey && allKeys) {
+        allKeys.forEach((key) => {
+          if (key.startsWith(likeKey)) {
+            const value = node.cacheNode.cache.get(key);
+            // maybe expired since keys() call
+            let cacheMiss = value === undefined;
+            result.push(value === "" || cacheMiss ? null : value);
+          }
+        });
+      } else {
+        result = allKeys;
+      }
+      RED.util.setMessageProperty(msg, node.valueProperty, result);
+      // 0 length triggers cache miss
+      sendMessage(msg, result.length === 0);
+    };
+    node.on("input", function(msg) {
+      if (node.cacheNode) {
+        let key = RED.util.getMessageProperty(msg, node.keyProperty);
+        if (msg.option) {
+          if (msg.option === "delete") {
+            del(msg, key);
+          } else if (msg.option === "dump") {
+            dump(msg, key);
+          } else if (msg.option === "keys") {
+            keys(msg, key);
+          } else if (msg.option === "getLike") {
+            getLike(msg, key);
+          }
+        } else {
           if (key) {
-            let value = RED.util.getMessageProperty(msg, this.valueProperty);
-            if (this.ttlProperty) {
-              let ttl = RED.util.getMessageProperty(msg, this.ttlProperty) || 0;
-              this.cacheNode.cache.set(key, value, ttl);
-            } else {
-              this.cacheNode.cache.set(key, value);
-            }
+            const value = node.cacheNode.cache.get(key);
+            let cacheMiss = value === undefined;
+            RED.util.setMessageProperty(
+              msg,
+              node.valueProperty,
+              value === "" || cacheMiss ? null : value
+            );
+            sendMessage(msg, cacheMiss);
           }
         }
-      });
-      process.nextTick(() => {
-        this.emit("updated");
+      }
+    });
+    process.nextTick(function() {
+      node.emit("updated");
+    });
+  }
+
+  RED.nodes.registerType("Cache in", cacheInNode);
+
+  function cacheOutNode(n) {
+    var node = this;
+    RED.nodes.createNode(node, n);
+    node.keyProperty = n.keyProperty || "topic";
+    node.valueProperty = n.valueProperty || "payload";
+    node.ttlProperty = n.ttlProperty || "";
+    node.useString = n.useString;
+    node.cacheNodeId = n.cache;
+    node.cacheNode = RED.nodes.getNode(node.cacheNodeId);
+    if (node.cacheNode) {
+      node.cacheNode.cache.addNode(node);
+      node.on("updated", function() {
+        node.status({
+          fill: "green",
+          shape: "dot",
+          text: RED._("cache.status.keys", {
+            n: node.cacheNode.cache.getStats().keys,
+          }),
+        });
       });
     }
+    node.name = n.name;
+    node.on("input", function(msg) {
+      if (node.cacheNode) {
+        let key = RED.util.getMessageProperty(msg, node.keyProperty);
+        if (key) {
+          let value = RED.util.getMessageProperty(msg, node.valueProperty);
+          if (node.ttlProperty) {
+            let ttl = RED.util.getMessageProperty(msg, node.ttlProperty) || 0;
+            node.cacheNode.cache.set(key, value, ttl);
+          } else {
+            node.cacheNode.cache.set(key, value);
+          }
+        }
+      }
+    });
+    process.nextTick(function() {
+      node.emit("updated");
+    });
   }
-  RED.nodes.registerType("Cache out", CacheOutNode);
+
+  RED.nodes.registerType("Cache out", cacheOutNode);
 }
