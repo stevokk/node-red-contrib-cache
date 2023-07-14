@@ -1,28 +1,20 @@
 {
-  "name": "node-red-contrib-cache",
-  "version": "2.0.3",
+  "name": "@stevokk/node-red-contrib-cache",
+  "version": "2.0.4",
   "description": "Node-RED nodes for memory cache",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/CANDY-LINE/node-red-contrib-cache.git"
+    "url": "https://github.com/stevokk/node-red-contrib-cache.git"
   },
-  "author": "Daisuke Baba <baba.daisuke@gmail.com>",
+  "author": "Steven Kissack",
   "bugs": {
-    "url": "https://github.com/CANDY-LINE/node-red-contrib-cache/issues"
+    "url": "https://github.com/stevokk/node-red-contrib-cache/issues"
   },
-  "scripts": {
-    "build": "grunt build",
-    "test": "grunt test",
-    "clean": "grunt clean",
-    "prepare": "grunt build"
-  },
-  "homepage": "https://github.com/CANDY-LINE/node-red-contrib-cache#readme",
+  "homepage": "https://github.com/stevokk/node-red-contrib-cache#readme",
   "keywords": [
     "node-red",
-    "cache",
-    "CANDY RED",
-    "CANDY EGG"
+    "cache"
   ],
   "devDependencies": {
     "babel": "^5.8.34",
@@ -45,12 +37,12 @@
     "uglify-js": "^2.6.1"
   },
   "dependencies": {
-    "node-cache": "^4.2.0",
+    "node-cache": "^4.2.1",
     "source-map-support": "^0.4.2"
   },
   "node-red": {
     "nodes": {
-      "cache": "dist/cache.js"
+      "cache": "src/cache.js"
     }
   }
 }
